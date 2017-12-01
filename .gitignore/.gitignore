@@ -1,0 +1,284 @@
+Tab Tab1 = instance.ActiveTab;
+
+SibboraHelper.WebHelper wHelper = new SibboraHelper.WebHelper(instance, project);
+
+wHelper.GlobalKMEmulate = true;
+		
+int WindowXSize = 1920;
+int WindowYSize = 1080;
+
+bool ProtectXPath = true;
+
+List<string> lstTempWrite = new List<string>();
+
+Random rndGenerator = new Random();
+string Login = project.Variables["login"].Value;
+
+int intTimer1 = Convert.ToInt32(project.Variables["timer1"].Value);
+int intTimer2 = Convert.ToInt32(project.Variables["timer2"].Value);
+
+string strResultFileName = string.Empty;
+string strSourceDirectoryPath = string.Empty;
+string strContainsForRemove = string.Empty;
+string strLogin = string.Empty;
+string strPass = string.Empty;
+string strProxy = string.Empty;
+string strTitle = string.Empty;
+string strText = string.Empty;
+string strPhotoLink = string.Empty;
+string strTextBody = string.Empty;
+string strMailResult = string.Empty;
+
+IZennoTable tblArticles = project.Tables["Articles"];
+IZennoList lstlinkPublished = project.Lists["linkPublished"];
+
+if (tblArticles.RowCount==0) {
+	project.SendInfoToLog("Таблица пута, заполните ее поля",true);
+	return "oki";
+}
+
+// Авторизуюсь и получаю всего необходимые переменные
+lock (SyncObjects.TableSyncer) {
+	strLogin = tblArticles.GetCell(0,0);
+	strPass = tblArticles.GetCell(1,0);
+	strProxy = tblArticles.GetCell(2,0);
+	strTitle = tblArticles.GetCell(3,0);
+	strText = tblArticles.GetCell(4,0);
+	strPhotoLink = tblArticles.GetCell(5,0);
+	project.SendInfoToLog("Взял картинку: "+strPhotoLink,true);
+	tblArticles.DeleteRow(0);
+	tblArticles.AddRow(new String[]{strLogin, strPass, strProxy, strTitle, strText, strPhotoLink});
+	Thread.Sleep(10000);
+	project.SendInfoToLog(String.Format("Логин: {0}, Прокси: {1}", strLogin, strProxy), true);
+}
+
+//Получаем данные профиля
+string strFilePath1 = project.Directory + @"\LinkedIn\Cookie\" + strLogin + ".zpprofile";
+string strDirectoryPath1 = project.Directory + @"\LinkedIn\Cookie\";
+//Directory.CreateDirectory: создаём новую папку
+Directory.CreateDirectory(strDirectoryPath1);
+if (File.Exists(strFilePath1)) {
+    project.Profile.Load(project.Directory + @"\LinkedIn\Cookie\" + strLogin + ".zpprofile"); //загружаем профиль
+} else {
+	//Устанавливаю прокси
+	instance.SetProxy(strProxy, false); // взял этот код из уже готовых кубиков
+}
+Tab1.Navigate("https://www.linkedin.com/");
+Tab1.WaitDownloading();
+if (Tab1.FindElementByXPath("//img[contains(@class, 'lazy-image')]",0).IsVoid) {
+	wHelper.SetElementValueXPath(Tab1, true, null, "//input[@id='login-email']", 0, strLogin, EmulateKM: false);
+	wHelper.SetElementValueXPath(Tab1, true, null, "//input[@id='login-password']", 0, strPass, EmulateKM: false);
+	wHelper.ClickElementXPath(Tab1, true, null, "//input[@id='login-submit']", 0, EmulateKM: false);
+	Tab1.WaitDownloading();
+}
+if (!Tab1.FindElementByXPath("//input[@id='verification-code']",0).IsVoid) {
+	project.SendInfoToLog("Появилось окно для ввода кода: Sign-In Verification",true);
+	project.SendInfoToLog(string.Format("Получаю код из почты {0}", strLogin),true);
+	if (strLogin.Contains("mail.ru")) {
+		strMailResult = ZennoPoster.MailConfirm("30;90;180", strLogin, strPass, "imap.mail.ru", 
+		993, true, true, true, true, @"linkedin", @"(?<=sign\ in:\ ).*", 0, true, new string[]{"INBOX"});
+	}
+	if (strLogin.Contains("list")) {
+		strMailResult = ZennoPoster.MailConfirm("30;90;180", strLogin, strPass, "imap.mail.ru", 
+		993, true, true, true, true, @"linkedin", @"(?<=sign\ in:\ ).*", 0, true, new string[]{"INBOX"});
+	}
+	if (strLogin.Contains("bk")) {
+		strMailResult = ZennoPoster.MailConfirm("30;90;180", strLogin, strPass, "imap.mail.ru", 
+		993, true, true, true, true, @"linkedin", @"(?<=sign\ in:\ ).*", 0, true, new string[]{"INBOX"});
+	}
+	if (strLogin.Contains("inbox")) {
+		strMailResult = ZennoPoster.MailConfirm("30;90;180", strLogin, strPass, "imap.mail.ru", 
+		993, true, true, true, true, @"linkedin", @"(?<=sign\ in:\ ).*", 0, true, new string[]{"INBOX"});
+	}
+	if (strLogin.Contains("rediff")) {
+		instance.NewTab("rediff.com");
+		instance.ActiveTab.Navigate("https://mail.rediff.com/cgi-bin/login.cgi");
+		string strLoginRediff = new Regex(@".*(?=@)").Match(strLogin).Value;
+		wHelper.SetElementValueXPath(instance.ActiveTab, true, null, "//input[@name='login']", 0, strLoginRediff, EmulateKM: false);
+		wHelper.SetElementValueXPath(instance.ActiveTab, true, null, "//input[@name='passwd']", 0, strPass, EmulateKM: false);
+		instance.ActiveTab.WaitDownloading();
+		if (!instance.ActiveTab.FindElementByXPath("//a[@class='skiplink']",0).IsVoid) {
+			instance.ActiveTab.FindElementByXPath("//a[@class='skiplink']",0).Click();
+			instance.ActiveTab.WaitDownloading();			
+		}
+		wHelper.ClickElementXPath(instance.ActiveTab, true, null, "//input[@name='proceed']", 0, EmulateKM: false);
+		wHelper.ClickElementXPath(instance.ActiveTab, true, null, "//li/span[@class='rd_from']", 0);
+		instance.ActiveTab.WaitDownloading();
+		Thread.Sleep(5000);
+		string strVerify = instance.ActiveTab.FindElementByXPath("//td[contains(text(), 'verification code')]",0).InnerText;
+		strMailResult = new Regex(@"(?<=:).*").Match(strVerify).Value;
+		instance.ActiveTab.Close();
+	}
+	// Перехожу для активации
+	wHelper.SetElementValueXPath(Tab1, true, null, "//input[@id='verification-code']", 0, strMailResult);
+	project.SendInfoToLog(string.Format("Получил код: {0}", strMailResult),true);
+	Tab1.WaitDownloading();
+	wHelper.ClickElementXPath(Tab1, true, null, "//input[@name='signin']", 0);
+	if (!Tab1.FindElementByXPath("//div[@class='alert error']",0).IsVoid) {
+		wHelper.ClickElementXPath(Tab1, true, null, "//a[@id='resendCodeATOPinChallenge']", 0);
+		Tab1.WaitDownloading();
+		strMailResult = ZennoPoster.MailConfirm("30;90;180", strLogin, strPass, "imap.mail.ru", 
+		993, true, true, true, true, @"linkedin", @"(?<=sign\ in:\ ).*", 0, true, new string[]{"INBOX"});
+		wHelper.SetElementValueXPath(Tab1, true, null, "//input[@id='verification-code']", 0, strMailResult);
+		wHelper.ClickElementXPath(Tab1, true, null, "//input[@name='signin']", 0);
+		Tab1.WaitDownloading();
+	}
+}
+Tab1.WaitDownloading();
+Thread.Sleep(15000);
+if (!Tab1.FindElementByXPath("//form[contains(@class, 'login-form')]", 0).IsVoid) {
+    Global.SpecialForms.AlertNotificator.Instance.DisplayAlert("Завершение", "Авторизация неудачна", null, 15000);
+	project.SendInfoToLog("Авторизация не прошла", true);
+	return null;
+} else {
+	project.SendInfoToLog("Успешно залогинились под аккаунтом: " + strLogin, true);
+	Global.SpecialForms.AlertNotificator.Instance.DisplayAlert("Активация", "Успешно залогинились под аккаунтом: " + strLogin, null, 15000);
+	project.Profile.Save(project.Directory + @"\LinkedIn\Cookie\" + strLogin + ".zpprofile", true, true, true, true, true); //сохранить профиль
+}
+int ColDo = tblArticles.RowCount;
+
+instance.ActiveTab.Navigate("https://www.linkedin.com/post/new");
+instance.ActiveTab.WaitDownloading();
+
+instance.SetFilesForUpload(strPhotoLink);
+Tab1.FindElementByXPath("//input[contains(@id, 'cover-image__file-input')]", 0).Click();
+for (int h=0; h<15; h++) {
+	if (instance.ActiveTab.FindElementByXPath("//div[contains(@class, 'cover-image__image')]",0).IsVoid) {
+		Thread.Sleep(3000);
+		continue;
+	} else {
+		project.SendInfoToLog("Фото установилось",true);
+		break;
+	}
+}
+int m=0;
+try {
+	//Пишу заголовок
+	Tab1.FindElementByXPath("//textarea[contains(@id, 'ember')]", 0).SetValue(strTitle, "Full");
+	Tab1.FindElementByXPath("//button[contains(@class, 'insert')]/following-sibling::div[contains(@class, 'blank')]", 0).Click();
+	instance.WaitFieldEmulationDelay();
+	instance.SendText("{ENTER}    ", 89);
+	Thread.Sleep(3000);
+	instance.SendText("{UP}{UP}{UP}", 89);
+	Thread.Sleep(3000);
+	//Пишу текст поста
+	// Забираю весь текст из переменной и добавляю его в список и начинаю обрабатывать его
+//	wHelper.ClickElementXPath(Tab1, true, null, "//div[contains(@class, 'ql-editor ql-blank')]/p", 0);		
+	if (strText.Contains('\n')) {
+		lstTempWrite.Clear();
+		string[] arrAddToListAllText = strText.Split('\n');
+		lstTempWrite.AddRange(arrAddToListAllText);
+		// Начинаю цикл для обработки строчек из списка
+		for (int z=0; z<10000; z++) {
+			if(((ZennoLab.InterfacesLibrary.ProjectModel.Collections.IContextExt)project.Context).IsInterrupted) return null; // Прерывание в ZP
+			if (lstTempWrite.Count==0) break;
+			strTextBody = lstTempWrite[0];
+			lstTempWrite.RemoveAt(0);
+			// Если текст содержит картинку 1
+			if (strTextBody.Contains("<a href=")) {
+				string strBodyBefore = new Regex(@".*(?=""<a\ href="")").Match(strTextBody).Value;
+				string strBodyLink = new Regex(@"(?<=""<a\ href="").*(?="">)").Match(strTextBody).Value;
+				string strBodyAfter = new Regex(@"(?<="">).*").Match(strTextBody).Value;
+				if(((ZennoLab.InterfacesLibrary.ProjectModel.Collections.IContextExt)project.Context).IsInterrupted) return null; // Прерывание в ZP
+				instance.SendText(strBodyBefore, 15);
+				Tab1.FindElementByXPath("//button[contains(@class, 'ql-li-link')]", 0).Click();
+				Tab1.FindElementByXPath("//input[contains(@id, 'text-input')]", 0).SetValue(strBodyAfter, "Full");
+				Tab1.FindElementByXPath("//input[contains(@id, 'url-input')]", 0).SetValue(strBodyLink, "Full");
+				Tab1.FindElementByXPath("//button[contains(@class, 'ql-save')]", 0).Click();
+				instance.WaitFieldEmulationDelay();
+				instance.SendText("{PGDN}{END}{DOWN}", 89);
+//				wHelper.SetElementValueXPath(Tab1, true, null, "//input[contains(@id, 'text-input')]", 0, strBodyAfter);
+//				wHelper.SetElementValueXPath(Tab1, true, null, "//input[contains(@id, 'url-input')]", 0, strBodyLink);
+				Thread.Sleep(1000);
+				instance.SendText("{UP}",10);
+				//System.Windows.Forms.SendKeys.SendWait("^{DELETE}");
+				Thread.Sleep(1000);
+				//wHelper.ClickElementXPath(Tab1, true, null, "//div[@class='ql-link-editor']/button[contains(@class, 'ql-save') and text()='Apply']", 0);
+				//Здесь надо линк доделать
+				continue;
+			}
+			if (strTextBody.Contains("http")) {
+				if(((ZennoLab.InterfacesLibrary.ProjectModel.Collections.IContextExt)project.Context).IsInterrupted) return null; // Прерывание в ZP
+				Tab1.FindElementByXPath("//button[contains(@class, 'ql-li-link')]", 0).Click();
+				//wHelper.ClickElementXPath(Tab1, true, null, "//button[contains(@class, 'ql-li-link')]", 0, EmulateKM: false);
+				Tab1.FindElementByXPath("//input[contains(@id, 'text-input')]", 0).SetValue(strTextBody, "Full");
+				Tab1.FindElementByXPath("//input[contains(@id, 'url-input')]", 0).SetValue(strTextBody, "Full");
+				Tab1.FindElementByXPath("//button[contains(@class, 'ql-save')]", 0).Click();
+				instance.WaitFieldEmulationDelay();
+				instance.SendText("{PGDN}{END}{ENTER}", 89);
+				//System.Windows.Forms.SendKeys.SendWait("^{DELETE}");
+				Thread.Sleep(1000);
+				//wHelper.ClickElementXPath(Tab1, true, null, "//div[@class='ql-link-editor']/button[contains(@class, 'ql-save') and text()='Apply']", 0);
+				//Здесь надо линк доделать
+				m++;
+				continue;
+			}
+			// Если текст содержит пустую строку
+			if (strTextBody!=string.Empty) {
+				if(((ZennoLab.InterfacesLibrary.ProjectModel.Collections.IContextExt)project.Context).IsInterrupted) return null; // Прерывание в ZP
+				instance.WaitFieldEmulationDelay();
+				instance.SendText(strTextBody, 15);
+				instance.SendText("{ENTER}",10);
+				Thread.Sleep(1000);
+				instance.SendText("{UP}",10);
+				//System.Windows.Forms.SendKeys.SendWait("^{DELETE}");
+				Thread.Sleep(1000);
+				m++;
+				continue;
+			} else {
+				if(((ZennoLab.InterfacesLibrary.ProjectModel.Collections.IContextExt)project.Context).IsInterrupted) return null; // Прерывание в ZP
+				instance.WaitFieldEmulationDelay();
+				instance.SendText("{ENTER}", 10);
+				Thread.Sleep(1000);
+				instance.SendText("{UP}",10);
+				//System.Windows.Forms.SendKeys.SendWait("^{DELETE}");
+				m++;
+				Thread.Sleep(1000);
+			}
+		}
+	} else {
+		if(((ZennoLab.InterfacesLibrary.ProjectModel.Collections.IContextExt)project.Context).IsInterrupted) return null; // Прерывание в ZP
+		instance.WaitFieldEmulationDelay();
+		instance.SendText(strText, 15);
+		Thread.Sleep(500);
+	}
+} catch {
+	project.SendErrorToLog("Ошибка",true);
+	throw new Exception("Error");
+}
+instance.WaitFieldEmulationDelay();
+// Эмулировать ввод текста
+instance.SendText("{END}", 89);
+for (int i=0; i<m; i++) {
+	instance.WaitFieldEmulationDelay();
+	// Эмулировать ввод текста
+	instance.SendText("{BACKSPACE}", 89);
+	Thread.Sleep(500);
+}
+//for (int i=0; i<20; i++) {
+//	System.Windows.Forms.SendKeys.SendWait("^{DELETE}");
+//	Thread.Sleep(500);
+//}
+if(((ZennoLab.InterfacesLibrary.ProjectModel.Collections.IContextExt)project.Context).IsInterrupted) return null; // Прерывание в ZP
+Tab1.FindElementByXPath("//button[contains(@class, 'button--publish')]", 0).Click();
+Thread.Sleep(3000);
+if (Tab1.FindElementByXPath("//button[contains(@class, 'button--publish')]", 0).IsVoid) {
+	Tab1.FindElementByXPath("//button[contains(@class, 'button--publish')]", 0).Click();
+	Thread.Sleep(3000);
+}
+if (instance.ActiveTab.FindElementByXPath("//div[contains(@class, 'hovercard-publishing-error-text')]",0).IsVoid) {
+	string strTextError = instance.ActiveTab.FindElementByXPath("//div[contains(@class, 'hovercard-publishing-error-text')]",0).InnerText;
+	project.SendWarningToLog(strTextError, true);
+}
+Thread.Sleep(5000);
+Tab1.FindElementByXPath("//button[contains(@class, 'paginated-modal__control-primary paginated-model__control-with-footer')]", 0).Click();
+instance.ActiveTab.WaitDownloading();
+Thread.Sleep(10000);
+
+if (!instance.ActiveTab.FindElementByXPath("//div[contains(@class, 'share-prompt')]/button[contains(@class, 'dismiss')]",0).IsVoid) {
+	project.SendInfoToLog("Пост опубликован",true);
+}
+lstlinkPublished.Add(Tab1.URL);
+project.Profile.Save(project.Directory + @"\LinkedIn\Cookie\" + strLogin + ".zpprofile", true, true, true, true, true); //сохранить профиль
+
+
